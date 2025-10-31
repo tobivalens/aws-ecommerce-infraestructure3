@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Librería Online</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>📚 Librería Online</h1>
+    <nav>
+      <span id="user-info"></span>
+      <a href="checkout.html">Pagar</a>
+      <a href="login.html" id="logout">Salir</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="catalogo">
+      <h2>Catálogo de Libros</h2>
+      <div id="lista-productos" class="grid"></div>
+    </section>
+
+    <section id="carrito">
+      <h2>🛒 Carrito de Compras</h2>
+      <ul id="items-carrito"></ul>
+      <p id="total">Total: $0</p>
+      <button id="btn-pagar">Ir al Pago</button>
+    </section>
+  </main>
+
+  <footer>
+    <p>© 2025 Librería Online | Proyecto AWS</p>
+  </footer>
+</body>
+</html>

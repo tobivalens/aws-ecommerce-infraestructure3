@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Login - Librería</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="js/config.js"></script>
+</head>
+<body>
+  <header>
+    <h1>📚 Librería Online</h1>
+  </header>
+
+  <main>
+    <section>
+      <h2>Iniciar sesión</h2>
+      <form id="form-login">
+        <label>Usuario:</label><br>
+        <input type="text" id="username" required><br><br>
+        <label>Contraseña:</label><br>
+        <input type="password" id="password" required><br><br>
+        <button type="submit">Entrar</button>
+      </form>
+      <p id="msg"></p>
+      <p>¿No tienes cuenta? <a href="register.html">Regístrate aquí</a></p>
+    </section>
+  </main>
+
+  <script>
+    $('#form-login').on('submit', async function(e) {
+      e.preventDefault();
+      const username = $('#username').val();
+      const password = $('#password').val();
+      $('#msg').text('Iniciando sesión...');
+
+      try {
+        const res = await fetch(`${API_URL}/users/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('username', data.user.username);
+          $('#msg').text('✅ Login exitoso, redirigiendo...');
+          setTimeout(() => window.location.href = 'index.html', 1000);
+        } else {
+          $('#msg').text('❌ ' + data.error);
+        }
+      } catch (err) {
+        $('#msg').text('Error de conexión con el servidor');
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Registro - Librería</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="js/config.js"></script>
+</head>
+<body>
+  <header>
+    <h1>📚 Librería Online</h1>
+  </header>
+
+  <main>
+    <section>
+      <h2>Registro de Usuario</h2>
+      <form id="form-register">
+        <label>Usuario:</label><br>
+        <input type="text" id="username" required><br><br>
+        <label>Contraseña:</label><br>
+        <input type="password" id="password" required><br><br>
+        <button type="submit">Registrarse</button>
+      </form>
+      <p id="msg"></p>
+      <p>¿Ya tienes cuenta? <a href="login.html">Inicia sesión aquí</a></p>
+    </section>
+  </main>
+
+  <script>
+    $('#form-register').on('submit', async function(e) {
+      e.preventDefault();
+      const username = $('#username').val();
+      const password = $('#password').val();
+      $('#msg').text('Registrando usuario...');
+
+      try {
+        const res = await fetch(`${API_URL}/users/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          $('#msg').text('✅ Registro exitoso, redirigiendo...');
+          setTimeout(() => window.location.href = 'login.html', 1000);
+        } else {
+          $('#msg').text('❌ ' + data.error);
+        }
+      } catch (err) {
+        $('#msg').text('Error de conexión con el servidor');
+      }
+    });
+  </script>
+</body>
+</html>

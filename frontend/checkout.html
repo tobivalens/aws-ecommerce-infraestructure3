@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Pago - Librería</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>💳 Pago simulado</h1>
+  </header>
+
+  <main>
+    <section>
+      <h2>Resumen del carrito</h2>
+      <ul id="resumen"></ul>
+      <p id="total"></p>
+    </section>
+
+    <section>
+      <h2>Datos de pago</h2>
+      <form id="form-pago">
+        <label>Número de tarjeta:</label><br>
+        <input type="text" required><br><br>
+        <label>Nombre del titular:</label><br>
+        <input type="text" required><br><br>
+        <button type="submit">Pagar</button>
+      </form>
+      <p id="mensaje"></p>
+    </section>
+  </main>
+
+  <script>
+    const carrito = JSON.parse(localStorage.getItem('carrito')) || [];
+    let total = carrito.reduce((acc, item) => acc + item.precio, 0);
+    carrito.forEach(p => $('#resumen').append(`<li>${p.nombre} - $${p.precio.toLocaleString()}</li>`));
+    $('#total').text(`Total a pagar: $${total.toLocaleString()}`);
+
+    $('#form-pago').on('submit', function(e) {
+      e.preventDefault();
+      $('#mensaje').text('Pago procesado exitosamente (simulado). ¡Gracias por tu compra!');
+      localStorage.removeItem('carrito');
+    });
+  </script>
+</body>
+</html>
