@@ -30,3 +30,15 @@ sequelize.sync().then(() => {
 app.post('/test', (req, res) => {
   res.json({ message: 'POST recibido correctamente' });
 });
+
+
+//LOAD BALANCER HEALTH ENDPOINT
+
+
+// Endpoint de salud para el Load Balancer
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
+const paymentRoutes = require('./routes/payments');
+app.use('/api/payments', paymentRoutes);

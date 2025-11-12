@@ -31,17 +31,54 @@
     </section>
   </main>
 
-  <script>
-    const carrito = JSON.parse(localStorage.getItem('carrito')) || [];
-    let total = carrito.reduce((acc, item) => acc + item.precio, 0);
-    carrito.forEach(p => $('#resumen').append(`<li>${p.nombre} - $${p.precio.toLocaleString()}</li>`));
-    $('#total').text(`Total a pagar: $${total.toLocaleString()}`);
+ <script>
+  const API_URL = "http://localhost:3000/api"; // asegúrate que coincide con tu back
+  const carrito = JSON.parse(localStorage.getItem('carrito')) || [];
+  const token = localStorage.getItem("token");
 
-    $('#form-pago').on('submit', function(e) {
-      e.preventDefault();
-      $('#mensaje').text('Pago procesado exitosamente (simulado). ¡Gracias por tu compra!');
-      localStorage.removeItem('carrito');
-    });
-  </script>
+  // Mostrar resumen
+  let total = carrito.reduce((acc, item) => acc + item.precio, 0);
+  carrito.forEach(p =>
+    $('#resumen').append(`<li>${p.nombre} - $${p.precio.toLocaleString()}</li>`)
+  );
+  $('#total').text(`Total a pagar: $${total.toLocaleString()}`);
+
+  // Pago real con Mercado Pago
+  $('#form-pago').on('submit', async function(e) {
+    e.preventDefault();
+
+    if (carrito.length === 0) {
+      alert('Tu carrito está vacío.');
+      return;
+    }
+
+    $('#mensaje').text('Creando preferencia de pago...');
+
+    try {
+      const res = await fetch(`${API_URL}/payments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ items: carrito })
+      });
+
+      const data = await res.json();
+
+      if (data.init_point) {
+        $('#mensaje').text('Redirigiendo a Mercado Pago...');
+        // 🔗 Redirigir al checkout real
+        window.location.href = data.init_point;
+      } else {
+        $('#mensaje').text('Error creando preferencia de pago.');
+      }
+    } catch (error) {
+      console.error('❌ Error:', error);
+      $('#mensaje').text('Error al conectar con el servidor.');
+    }
+  });
+</script>
+
 </body>
 </html>

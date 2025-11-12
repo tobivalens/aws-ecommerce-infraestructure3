@@ -78,3 +78,20 @@ section {
 #carrito li {
   margin-bottom: 0.5rem;
 }
+
+.producto {
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 10px;
+  text-align: center;
+  background: #fafafa;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.producto-img {
+  width: 120px;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
