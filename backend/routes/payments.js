@@ -3,7 +3,6 @@ const express = require('express');
 const router = express.Router();
 require('dotenv').config();
 
-// Usamos el mismo patrón que ya tenías
 const mercadopago = require('mercadopago');
 const { Preference } = require('mercadopago');
 
@@ -22,6 +21,7 @@ router.post('/', async (req, res) => {
 
     // 🌐 URL base del frontend (se adapta sola a local / ALB)
     const FRONTEND_URL = `${req.protocol}://${req.get('host')}`;
+    console.log('FRONTEND_URL para back_urls:', FRONTEND_URL);
 
     const preference = {
       items: items.map((item) => ({
@@ -35,13 +35,16 @@ router.post('/', async (req, res) => {
         failure: `${FRONTEND_URL}/failure.html`,
         pending: `${FRONTEND_URL}/pending.html`,
       },
-      auto_return: 'approved', // vuelve solo al success si se aprueba
+      // ❌ quitamos auto_return porque estaba dando el error
+      // auto_return: 'approved',
     };
+
+    console.log('Enviando preferencia a MP:', JSON.stringify(preference, null, 2));
 
     const pref = new Preference(client);
     const result = await pref.create({ body: preference });
 
-    // El SDK puede devolver la data directo o en .body, lo manejamos defensivo
+    // El SDK puede devolver los datos en .body
     const body = result.body || result;
     const id = body.id;
     const init_point = body.init_point;
