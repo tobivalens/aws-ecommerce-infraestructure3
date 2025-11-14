@@ -15,12 +15,12 @@ BUCKET="bookstore-artifacts-$(date +%s)"
 # 2. Verificar que el template exista localmente
 # -----------------------------
 if [ ! -f "$TEMPLATE_FILE" ]; then
-  echo "❌ No se encontró el archivo $TEMPLATE_FILE en $(pwd)"
+  echo "No se encontró el archivo $TEMPLATE_FILE en $(pwd)"
   echo "Asegúrate de estar en la carpeta infraestructure con el YAML."
   exit 1
 fi
 
-echo "📄 Usando plantilla local: $TEMPLATE_FILE"
+echo "Usando plantilla local: $TEMPLATE_FILE"
 
 # -----------------------------
 # 3. Key Pair (.pem) – solo si hace falta
@@ -29,7 +29,7 @@ echo "🔑 Verificando KeyPair..."
 
 # Si ya existe el .pem, no lo tocamos
 if [ -f "$HOME/$KEY_PAIR_NAME.pem" ]; then
-  echo "🔐 Ya existe $HOME/$KEY_PAIR_NAME.pem, no se vuelve a crear."
+  echo "Ya existe $HOME/$KEY_PAIR_NAME.pem, no se vuelve a crear."
 else
   echo "🆕 Creando KeyPair en AWS y guardando .pem..."
 
@@ -45,14 +45,14 @@ fi
 # -----------------------------
 # 4. Crear bucket único
 # -----------------------------
-echo "📦 Creando bucket S3: $BUCKET"
+echo " Creando bucket S3: $BUCKET"
 aws s3 mb "s3://$BUCKET"
 echo "✔ Bucket creado"
 
 # -----------------------------
 # 5. Despliegue CloudFormation
 # -----------------------------
-echo "🚀 Desplegando CloudFormation..."
+echo "Desplegando CloudFormation..."
 
 aws cloudformation deploy \
   --template-file "$TEMPLATE_FILE" \
@@ -71,3 +71,22 @@ aws cloudformation deploy \
 echo "🎉 DEPLOY COMPLETADO"
 echo "✔ Revisa los outputs del stack con:"
 echo "aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs'"
+
+
+
+echo "🔍 Obteniendo DNS del Application Load Balancer..."
+
+ALB_DNS=$(aws cloudformation describe-stacks \
+  --stack-name "$STACK_NAME" \
+  --query "Stacks[0].Outputs[?OutputKey=='AlbDNS'].OutputValue" \
+  --output text)
+
+if [ "$ALB_DNS" == "None" ] || [ -z "$ALB_DNS" ]; then
+  echo "⚠ No se encontró el output AlbDNS. Revisa el stack en AWS."
+else
+  echo ""
+  echo " Tu aplicación está desplegada correctamente."
+  echo " Accede aquí:"
+  echo " http://$ALB_DNS"
+  echo ""
+fi
