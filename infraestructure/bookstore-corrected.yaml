@@ -1,0 +1,934 @@
+# ────────────────────────────────────────────────────────────────────────────────
+# VPC + 2 subredes públicas, 2 privadas, IGW y NAT (1 NAT económico)
+# Corregido: KeyName parametrizado, AppSg permite ALB->App y Bastion->SSH
+# ────────────────────────────────────────────────────────────────────────────────
+Parameters:
+  ProjectName:
+    Type: String
+    Default: bookstore
+
+  # ===== VPC =====
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+
+  PublicSubnet1Cidr:
+    Type: String
+    Default: 10.0.1.0/24
+
+  PublicSubnet2Cidr:
+    Type: String
+    Default: 10.0.2.0/24
+
+  PrivateSubnet1Cidr:
+    Type: String
+    Default: 10.0.11.0/24
+
+  PrivateSubnet2Cidr:
+    Type: String
+    Default: 10.0.12.0/24
+
+  # ===== APP / BACKEND =====
+  AppPort:
+    Type: Number
+    Default: 3000
+
+  RepoUrl:
+    Type: String
+    Default: "https://github.com/tobivalens/aws-ecommerce-infraestructure3.git"
+
+  RepoBranch:
+    Type: String
+    Default: main
+
+  AppRootPath:
+    Type: String
+    Default: /opt/app
+
+  BackendPath:
+    Type: String
+    Default: backend
+
+  FrontendPath:
+    Type: String
+    Default: frontend
+
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+
+  LatestAL2023Ami:
+    Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+  DbEngine:
+    Type: String
+    Default: mysql
+    AllowedValues:
+      - mysql
+      - postgres
+
+  Environment:
+    Type: String
+    Default: dev
+
+  Owner:
+    Type: String
+    Default: vale
+
+  # ===== RDS =====
+  DBName:
+    Type: String
+    Default: bookstore
+
+  DBUser:
+    Type: String
+    Default: admin
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    AllowedValues:
+      - db.t3.micro
+      - db.t3.small
+      - db.t3.medium
+      - db.t2.micro
+      - db.t2.small
+      - db.t2.medium
+    Description: Clases permitidas según guía
+
+  # ===== Auto Scaling =====
+  DesiredCapacity:
+    Type: Number
+    Default: 1
+
+  MinSize:
+    Type: Number
+    Default: 1
+
+  MaxSize:
+    Type: Number
+    Default: 2
+
+  EmailSubscription:
+    Type: String
+    Default: ""
+    Description: Optional email to subscribe to SNS alerts (dejar vacío para no suscribir)
+
+  LogFilePrefix:
+    Type: String
+    Default: cloudtrail
+
+  ExistingBucketName:
+    Type: String
+    Default: ""     # si viene vacío, el stack creará el bucket
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Nombre del Key Pair para SSH
+    Default: bookstore-keypair
+
+Conditions:
+  HasEmail: !Not [!Equals [!Ref EmailSubscription, ""]]
+
+  CreateBucket: !Equals [ !Ref ExistingBucketName, "" ]
+  UseExistingBucket: !Not [ !Equals [ !Ref ExistingBucketName, "" ] ]
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-vpc'
+
+  IGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-igw'
+
+  AttachIgw:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref IGW
+
+  # ---------- Rutas públicas ----------
+  PublicRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-rt'
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachIgw
+    Properties:
+      RouteTableId: !Ref PublicRT
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+
+  # ---------- Subredes públicas ----------
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet1Cidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-a'
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet2Cidr
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-b'
+
+  AssocPublic1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRT
+
+  AssocPublic2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRT
+
+  # ---------- NAT (económico: 1 NAT en AZ-a) ----------
+  NatEip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-nat-eip'
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: AttachIgw
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-nat-a'
+
+  # ---------- Rutas privadas (ambas a un solo NAT) ----------
+  PrivateRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-private-rt'
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRT
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  # ---------- Subredes privadas ----------
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet1Cidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-private-a'
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet2Cidr
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-private-b'
+
+  AssocPrivate1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRT
+
+  AssocPrivate2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRT
+
+  AlbSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG ALB 80
+      VpcId: !Ref VPC             # antes era !Ref VpcId (Parameter)
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-alb-sg"
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Type: application
+      IpAddressType: ipv4
+      Subnets:
+        - !Ref PublicSubnet1      # antes PublicSubnet1Id (Parameter)
+        - !Ref PublicSubnet2      # antes PublicSubnet2Id (Parameter)
+      SecurityGroups:
+        - !Ref AlbSg
+      LoadBalancerAttributes:
+        - Key: load_balancing.cross_zone.enabled
+          Value: "true"
+        - Key: idle_timeout.timeout_seconds
+          Value: "60"
+        - Key: routing.http2.enabled
+          Value: "true"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-alb"
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPC
+      Protocol: HTTP
+      Port: !Ref AppPort
+      TargetType: instance
+      HealthCheckPath: /health
+      Matcher:
+        HttpCode: "200-399"
+
+  Listener80:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+  DbSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG para RDS MySQL
+      VpcId: !Ref VPC          # antes era !Ref VpcId (Parameter)
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-db-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub "${ProjectName} db subnets"
+      SubnetIds:
+        - !Ref PrivateSubnet1   # antes Subnet1Id (Parameter)
+        - !Ref PrivateSubnet2   # antes Subnet2Id (Parameter)
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+
+  DbInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Sub "${ProjectName}-mysql"
+      Engine: mysql
+      # EngineVersion: 8.0.39   # (Opcional)
+      MasterUsername: !Ref DBUser
+      MasterUserPassword: !Ref DBPassword
+      DBName: !Ref DBName
+      AllocatedStorage: 20
+      StorageType: gp3
+      DBInstanceClass: !Ref DBInstanceClass
+      VPCSecurityGroups:
+        - !GetAtt DbSg.GroupId
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      PubliclyAccessible: false
+      MultiAZ: false
+      DeletionProtection: false
+      BackupRetentionPeriod: 0
+      CopyTagsToSnapshot: true
+      EnableCloudwatchLogsExports:
+        - error
+        - general
+        - slowquery
+      Port: 3306
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+   # SG de la app (instancias detrás del ALB)
+  AppSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for Node/Express app, traffic from ALB and Bastion SSH
+      VpcId: !Ref VPC                  # <-- usamos la VPC ya creada en este mismo template
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref AppPort
+          ToPort: !Ref AppPort
+          SourceSecurityGroupId: !Ref AlbSg   # <-- SG del ALB definido en la sección del ALB
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref BastionSg  # permitir SSH desde la Bastion
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-app-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+
+  # Permitir que la app se conecte a la BD
+  DbIngressFromApp:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DbSg                # <-- SG de la DB definido en la sección de RDS
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      SourceSecurityGroupId: !GetAtt AppSg.GroupId
+
+  # Launch Template para las instancias de la app
+  LT:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub "${ProjectName}-lt"
+      LaunchTemplateData:
+        ImageId: !Ref LatestAL2023Ami
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref KeyName 
+        SecurityGroupIds:
+          - !GetAtt AppSg.GroupId
+        UserData:
+          Fn::Base64:
+            Fn::Sub:
+              - |
+                #!/bin/bash
+                # Log de user-data
+                exec > /var/log/user-data.log 2>&1
+                set -xe
+
+                APP_ROOT="${AppRootPath}"
+                REPO_URL="${RepoUrl}"
+                REPO_BRANCH="${RepoBranch}"
+                BACKEND_DIR="${BackendPath}"
+                FRONTEND_DIR="${FrontendPath}"
+                APP_PORT="${AppPort}"
+
+                DB_HOST="${DbEndpoint}"
+                DB_NAME="${DBName}"
+                DB_USER="${DBUser}"
+                DB_PASS="${DBPassword}"
+
+                # -----------------------------
+                # Paquetes básicos
+                # (NO instalamos "curl" para evitar conflicto con curl-minimal)
+                # -----------------------------
+                dnf update -y
+                dnf install -y git unzip nginx nmap-ncat
+
+                # -----------------------------
+                # Node.js 20 + pm2
+                # -----------------------------
+                curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+                dnf install -y nodejs
+                npm install -g pm2
+
+                # -----------------------------
+                # Clonar repo
+                # -----------------------------
+                mkdir -p "$APP_ROOT"
+                cd "$APP_ROOT"
+
+                git clone --branch "$REPO_BRANCH" "$REPO_URL" src || true
+                cd src
+
+                # -----------------------------
+                # FRONTEND: copiar estáticos, SIN npm
+                # -----------------------------
+                if [ -n "$FRONTEND_DIR" ] && [ -d "$FRONTEND_DIR" ]; then
+                  cd "$FRONTEND_DIR"
+
+                  # Crear carpeta public en backend y copiar todo el frontend
+                  mkdir -p "$APP_ROOT/src/$BACKEND_DIR/public"
+                  cp -r ./* "$APP_ROOT/src/$BACKEND_DIR/public/"
+
+                  cd "$APP_ROOT/src"
+                fi
+
+                # -----------------------------
+                # BACKEND
+                # -----------------------------
+                cd "$BACKEND_DIR"
+
+                # .env con las variables que usa tu backend
+                cat > .env <<EOF
+                DB_HOST=$DB_HOST
+                DB_USER=$DB_USER
+                DB_PASS=$DB_PASS
+                DB_NAME=$DB_NAME
+                DB_PORT=3306
+
+                PORT=$APP_PORT
+                JWT_SECRET=mi_secreto_super_seguro
+                MP_ACCESS_TOKEN=APP_USR-808920290219188-110702-110355d6da30d72e55b45d7b82c08624-2973454666
+                MP_PUBLIC_KEY=APP_USR-541a0dcd-d269-4379-a988-623634c72992
+                EOF
+
+                # Esperar a que la BD esté arriba
+                echo "Esperando a que la base de datos esté lista en $DB_HOST:3306..."
+                until nc -z -w5 "$DB_HOST" 3306; do
+                  echo "BD aún no responde, reintentando en 10s..."
+                  sleep 10
+                done
+                echo "BD lista, continuando con el backend."
+
+                # Instalar dependencias backend
+                npm install
+
+                # Levantar app con node index.js (más directo que npm start)
+                pm2 start index.js --name app
+                pm2 save
+
+                # -----------------------------
+                # NGINX como reverse proxy
+                # -----------------------------
+                cat > /etc/nginx/conf.d/app.conf <<NGINX
+                server {
+                  listen 80;
+                  server_name _;
+                  location / {
+                    proxy_pass http://127.0.0.1:$APP_PORT;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade \$http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host \$host;
+                    proxy_cache_bypass \$http_upgrade;
+                  }
+                }
+                NGINX
+
+                rm -f /etc/nginx/conf.d/default.conf || true
+                systemctl enable nginx
+                systemctl restart nginx
+              - DbEndpoint: !GetAtt DbInstance.Endpoint.Address
+
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub "${ProjectName}-instance"
+              - Key: Project
+                Value: !Ref ProjectName
+              - Key: Env
+                Value: !Ref Environment
+              - Key: Owner
+                Value: !Ref Owner
+          - ResourceType: volume
+            Tags:
+              - Key: Project
+                Value: !Ref ProjectName
+              - Key: Env
+                Value: !Ref Environment
+              - Key: Owner
+                Value: !Ref Owner
+
+
+  # Auto Scaling Group que usa el Launch Template y el Target Group del ALB
+  ASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      MinSize: !Ref MinSize
+      MaxSize: !Ref MaxSize
+      DesiredCapacity: !Ref DesiredCapacity
+      TargetGroupARNs:
+        - !Ref TargetGroup       # <-- TargetGroup definido en la sección del ALB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LT
+        Version: !GetAtt LT.LatestVersionNumber
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 120
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-asg"
+          PropagateAtLaunch: true
+        - Key: Project
+          Value: !Ref ProjectName
+          PropagateAtLaunch: true
+        - Key: Env
+          Value: !Ref Environment
+          PropagateAtLaunch: true
+        - Key: Owner
+          Value: !Ref Owner
+          PropagateAtLaunch: true
+    # =========================
+  # BASTION (EC2 en subred pública)
+  # =========================
+  BastionSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Bastion sin acceso externo (sandbox, sin SSH abierto)
+      VpcId: !Ref VPC
+      SecurityGroupIngress: []   # sin puertos abiertos
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-bastion-sg"
+  # Security Group para SSH
+  SshSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH access
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0   # <-- cambia a tu IP si quieres más seguro, ej: 123.45.67.89/32
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-ssh-sg"
+
+
+  Bastion:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAL2023Ami
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName       # <- usar el parámetro KeyName
+
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId: !Ref PublicSubnet1   # usamos la subred pública 1 que ya existe
+          GroupSet:
+            - !Ref BastionSg
+            - !Ref SshSg 
+            
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-bastion"
+    # =========================
+  # SNS – Topic de alertas
+  # =========================
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${ProjectName}-alerts"
+
+  AlertsSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasEmail
+    Properties:
+      Protocol: email
+      TopicArn: !Ref AlertsTopic
+      Endpoint: !Ref EmailSubscription
+
+  # -------------------------
+  # CloudWatch Alarms
+  # -------------------------
+  HighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-high-cpu-asg"
+      AlarmDescription: "EC2 CPU > 70% (ASG) for 2 minutes"
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 70
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref ASG          # <- usamos el ASG del mismo template
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertsTopic        # <- SNS Topic del template
+
+  Alb5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-alb-5xx"
+      AlarmDescription: "ALB 5xx > 5 per 2 minutes"
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_ELB_5XX_Count
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt ALB.LoadBalancerFullName   # <- dimensión tipo app/...
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertsTopic
+
+  TgUnhealthyHostsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-tg-unhealthy"
+      AlarmDescription: "Unhealthy targets > 0 for 2 minutes"
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TargetGroup
+          Value: !GetAtt TargetGroup.TargetGroupFullName
+        - Name: LoadBalancer
+          Value: !GetAtt ALB.LoadBalancerFullName
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertsTopic
+
+  # -------------------------
+  # CloudTrail + S3 Bucket
+  # -------------------------
+  TrailBucket:
+    Condition: CreateBucket
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      # sin BucketName -> CFN genera uno único y evitamos colisiones entre sandboxes
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+
+  TrailBucketPolicy:
+    Condition: CreateBucket
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TrailBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudTrailBucketAclCheck
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: s3:GetBucketAcl
+            Resource: !Sub arn:aws:s3:::${TrailBucket}
+
+          # Escritura sin prefijo
+          - Sid: AWSCloudTrailWriteNoPrefix
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: s3:PutObject
+            Resource: !Sub arn:aws:s3:::${TrailBucket}/AWSLogs/${AWS::AccountId}/*
+            Condition:
+              StringEquals:
+                "s3:x-amz-acl": "bucket-owner-full-control"
+
+          # Escritura con prefijo
+          - Sid: AWSCloudTrailWriteWithPrefix
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: s3:PutObject
+            Resource: !Sub arn:aws:s3:::${TrailBucket}/${LogFilePrefix}/AWSLogs/${AWS::AccountId}/*
+            Condition:
+              StringEquals:
+                "s3:x-amz-acl": "bucket-owner-full-control"
+
+  ExistingBucketPolicy:
+    Condition: UseExistingBucket
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ExistingBucketName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudTrailBucketAclCheck
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: s3:GetBucketAcl
+            Resource: !Sub arn:aws:s3:::${ExistingBucketName}
+
+          - Sid: AWSCloudTrailWriteNoPrefix
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: s3:PutObject
+            Resource: !Sub arn:aws:s3:::${ExistingBucketName}/AWSLogs/${AWS::AccountId}/*
+            Condition:
+              StringEquals:
+                "s3:x-amz-acl": "bucket-owner-full-control"
+
+          - Sid: AWSCloudTrailWriteWithPrefix
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: s3:PutObject
+            Resource: !Sub arn:aws:s3:::${ExistingBucketName}/${LogFilePrefix}/AWSLogs/${AWS::AccountId}/*
+            Condition:
+              StringEquals:
+                "s3:x-amz-acl": "bucket-owner-full-control"
+
+  TrailWithNewBucket:
+    Condition: CreateBucket
+    Type: AWS::CloudTrail::Trail
+    DependsOn: TrailBucketPolicy
+    Properties:
+      TrailName: !Sub ${ProjectName}-trail
+      S3BucketName: !Ref TrailBucket
+      S3KeyPrefix: !Ref LogFilePrefix
+      IncludeGlobalServiceEvents: true
+      IsMultiRegionTrail: true
+      IsLogging: true
+      EnableLogFileValidation: true
+
+  TrailWithExistingBucket:
+    Condition: UseExistingBucket
+    Type: AWS::CloudTrail::Trail
+    DependsOn: ExistingBucketPolicy
+    Properties:
+      TrailName: !Sub ${ProjectName}-trail
+      S3BucketName: !Ref ExistingBucketName
+      S3KeyPrefix: !Ref LogFilePrefix
+      IncludeGlobalServiceEvents: true
+      IsMultiRegionTrail: true
+      IsLogging: true
+      EnableLogFileValidation: true
+      
+    
+
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+    Description: VPC Id
+  PublicSubnet1Id:
+    Value: !Ref PublicSubnet1
+    Description: Subred pública A
+  PublicSubnet2Id:
+    Value: !Ref PublicSubnet2
+    Description: Subred pública B
+  PrivateSubnet1Id:
+    Value: !Ref PrivateSubnet1
+    Description: Subred privada A
+  PrivateSubnet2Id:
+    Value: !Ref PrivateSubnet2
+    Description: Subred privada B
+  AlbDNS:
+    Description: DNS público del ALB
+    Value: !GetAtt ALB.DNSName
+
+  AlbArn:
+    Description: ARN del ALB
+    Value: !Ref ALB
+
+  AlbSgId:
+    Description: Security Group ID del ALB
+    Value: !GetAtt AlbSg.GroupId
+
+  TargetGroupArn:
+    Description: ARN del Target Group
+    Value: !Ref TargetGroup
+
+  AlbDimension:
+    Description: Dimensión LoadBalancer para métricas de CloudWatch (formato app/...)
+    Value: !GetAtt ALB.LoadBalancerFullName
+
+  TargetGroupDimension:
+    Description: Dimensión TargetGroup para métricas de CloudWatch (formato targetgroup/...)
+    Value: !GetAtt TargetGroup.TargetGroupFullName
+
+  DbEndpoint:
+    Value: !GetAtt DbInstance.Endpoint.Address
+    Description: Endpoint de conexión de MySQL RDS
+
+  DbPort:
+    Value: !GetAtt DbInstance.Endpoint.Port
+    Description: Puerto del servicio MySQL
+
+  DbSgId:
+    Value: !GetAtt DbSg.GroupId
+    Description: Security Group ID de la base de datos
+
+  AppSgId:
+    Description: Security Group ID de la aplicación
+    Value: !GetAtt AppSg.GroupId
+
+  AsgName:
+    Description: Nombre del Auto Scaling Group
+    Value: !Ref ASG
+
+  BastionId:
+    Description: EC2 Bastion instance id
+    Value: !Ref Bastion
+
+  BastionSgId:
+    Description: SG id del Bastion
+    Value: !Ref BastionSg
+
+  AlertsTopicArn:
+    Description: SNS Topic ARN para alertas
+    Value: !Ref AlertsTopic
+
+  TrailName:
+    Description: CloudTrail name
+    Value: !If [ CreateBucket, !Ref TrailWithNewBucket, !Ref TrailWithExistingBucket ]
+
+  TrailBucketName:
+    Description: Bucket for CloudTrail logs
+    Value: !If [ CreateBucket, !Ref TrailBucket, !Ref ExistingBucketName ]
