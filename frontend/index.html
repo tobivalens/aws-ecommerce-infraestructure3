@@ -6,7 +6,9 @@
   <title>Librería Online</title>
   <link rel="stylesheet" href="css/styles.css">
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <!-- Aquí se define API_URL = "/api" -->
   <script src="js/config.js"></script>
+  <!-- Aquí va la lógica de catálogo, carrito y pagos -->
   <script src="js/app.js" defer></script>
 </head>
 <body>
@@ -34,7 +36,22 @@
   </main>
 
   <footer>
-    <p>© 2025 Librería Online | Proyecto AWS</p>
+    <p> 2025 Librería Online | Proyecto AWS</p>
   </footer>
+
+  <!-- Pequeño script para manejar el logout -->
+  <script>
+    $(document).ready(function () {
+      $('#logout').on('click', function (e) {
+        e.preventDefault();
+        // limpiar datos de sesión
+        localStorage.removeItem('token');
+        localStorage.removeItem('username');
+        localStorage.removeItem('carrito');
+        // redirigir al login
+        window.location.href = 'login.html';
+      });
+    });
+  </script>
 </body>
 </html>

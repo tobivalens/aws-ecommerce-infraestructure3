@@ -5,6 +5,7 @@
   <title>Login - Librería</title>
   <link rel="stylesheet" href="css/styles.css">
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <!-- Aquí se define API_URL = "/api" -->
   <script src="js/config.js"></script>
 </head>
 <body>
@@ -30,9 +31,15 @@
   <script>
     $('#form-login').on('submit', async function(e) {
       e.preventDefault();
-      const username = $('#username').val();
-      const password = $('#password').val();
+
+      const username = $('#username').val().trim();
+      const password = $('#password').val().trim();
       $('#msg').text('Iniciando sesión...');
+
+      if (!username || !password) {
+        $('#msg').text('Por favor llena usuario y contraseña');
+        return;
+      }
 
       try {
         const res = await fetch(`${API_URL}/users/login`, {
@@ -41,16 +48,33 @@
           body: JSON.stringify({ username, password })
         });
 
-        const data = await res.json();
-        if (res.ok) {
+        let data = null;
+        try {
+          // Intentamos parsear JSON (por si el backend devuelve error en JSON)
+          data = await res.json();
+        } catch (parseErr) {
+          console.error('❌ Error parseando JSON de login:', parseErr);
+        }
+
+        if (!res.ok) {
+          const msg =
+            (data && (data.error || data.message)) ||
+            `Error en el login (status ${res.status})`;
+
+          $('#msg').text('❌ ' + msg);
+          return;
+        }
+
+        // Si todo bien, guardamos token y usuario
+        if (data && data.token && data.user && data.user.username) {
           localStorage.setItem('token', data.token);
           localStorage.setItem('username', data.user.username);
-          $('#msg').text('✅ Login exitoso, redirigiendo...');
-          setTimeout(() => window.location.href = 'index.html', 1000);
-        } else {
-          $('#msg').text('❌ ' + data.error);
         }
+
+        $('#msg').text('✅ Login exitoso, redirigiendo...');
+        setTimeout(() => window.location.href = 'index.html', 1000);
       } catch (err) {
+        console.error('❌ Error de red / fetch en login:', err);
         $('#msg').text('Error de conexión con el servidor');
       }
     });
