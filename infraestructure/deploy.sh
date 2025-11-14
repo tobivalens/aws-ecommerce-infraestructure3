@@ -12,7 +12,7 @@ KEY_PAIR_NAME="bookstore-keypair"
 
 BUCKET="bookstore-artifacts-$(date +%s)"
 
-REPO_URL="https://raw.githubusercontent.com/tobivalens/aws-ecommerce-infraestructure3/main/infra"
+REPO_URL="https://raw.githubusercontent.com/tobivalens/aws-ecommerce-infraestructure3/main/infraestructe"
 
 # -----------------------------
 # 2. Descargar template desde GitHub automáticamente
