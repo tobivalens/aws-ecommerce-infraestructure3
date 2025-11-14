@@ -1,5 +1,7 @@
 $(document).ready(async function () {
-  const API_URL = "http://localhost:3000/api"; // 👈 asegúrate que tu backend esté en este puerto
+  // Usar el mismo host desde donde se carga el frontend (ALB, dominio, etc.)
+  // "/api" → las peticiones van a /api/products, /api/payments en el mismo dominio
+  const API_URL = "/api";
   console.log("🔄 Cargando productos desde:", API_URL);
 
   const token = localStorage.getItem("token");
