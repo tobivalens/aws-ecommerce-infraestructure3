@@ -3,7 +3,7 @@ require("dotenv").config();
 const { sequelize } = require("./models");
 const Product = require("./models/product");
 
-// 🛒 Productos de ejemplo (puedes seguir agregando aquí)
+// 🛒 Productos de ejemplo 
 const productos = [
   {
     nombre: "El Principito",
@@ -27,10 +27,37 @@ const productos = [
     nombre: "Rayuela",
     descripcion: "Julio Cortázar",
     precio: 39000,
-    imagen: "img/rayuela_JC.png",
+    imagen: "img/rayuelabook.jpeg",
   },
-  // 👉 aquí puedes ir agregando más productos:
-  // { nombre: "...", descripcion: "...", precio: 12345, imagen: "img/loquesea.jpg" },
+
+   {
+    nombre: "Dracula",
+    descripcion: "Bram Stoker",
+    precio: 60000,
+    imagen: "img/dracula.jpeg",
+  },
+
+   {
+    nombre: "Cumbres Borrascosas",
+    descripcion: "Emily Bronte",
+    precio: 32000,
+    imagen: "img/cumbres.jpeg",
+  },
+
+  {
+    nombre: "El retrato de Dorian Gray",
+    descripcion: "Oscar Wilde",
+    precio: 32000,
+    imagen: "img/dorian.jpeg",
+  },
+
+  {
+    nombre: "El Conde de Montecristo",
+    descripcion: "Alejandro Dumas",
+    precio: 50000,
+    imagen: "img/montecristo.jpeg",
+  },
+
 ];
 
 async function seedProducts() {
