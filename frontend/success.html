@@ -1,3 +1,29 @@
-<h1>✅ ¡Pago aprobado!</h1>
-<p>Gracias por tu compra, tu pedido está en proceso.</p>
-<a href="index.html">Volver al inicio</a>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Pago aprobado</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <main>
+    <h1>✅ ¡Pago aprobado!</h1>
+    <p>Gracias por tu compra, tu pedido está en proceso. 🥹📚</p>
+
+    <button id="btn-volver">Volver a la librería</button>
+  </main>
+
+  <script>
+    // Opcional: limpiar carrito después de un pago exitoso
+    try {
+      localStorage.removeItem('carrito');
+    } catch (e) {
+      console.warn('No se pudo limpiar el carrito:', e);
+    }
+
+    document.getElementById('btn-volver').addEventListener('click', () => {
+      window.location.href = 'index.html';
+    });
+  </script>
+</body>
+</html>
