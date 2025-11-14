@@ -126,7 +126,7 @@ Parameters:
 
   ExistingBucketName:
     Type: String
-    Default: ""     # si viene vacío, el stack creará el bucket
+    Default: ""    
 
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
@@ -289,7 +289,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: SG ALB 80
-      VpcId: !Ref VPC             # antes era !Ref VpcId (Parameter)
+      VpcId: !Ref VPC             
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -306,8 +306,8 @@ Resources:
       Type: application
       IpAddressType: ipv4
       Subnets:
-        - !Ref PublicSubnet1      # antes PublicSubnet1Id (Parameter)
-        - !Ref PublicSubnet2      # antes PublicSubnet2Id (Parameter)
+        - !Ref PublicSubnet1      
+        - !Ref PublicSubnet2     
       SecurityGroups:
         - !Ref AlbSg
       LoadBalancerAttributes:
@@ -345,7 +345,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: SG para RDS MySQL
-      VpcId: !Ref VPC          # antes era !Ref VpcId (Parameter)
+      VpcId: !Ref VPC          
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-db-sg"
@@ -361,8 +361,8 @@ Resources:
     Properties:
       DBSubnetGroupDescription: !Sub "${ProjectName} db subnets"
       SubnetIds:
-        - !Ref PrivateSubnet1   # antes Subnet1Id (Parameter)
-        - !Ref PrivateSubnet2   # antes Subnet2Id (Parameter)
+        - !Ref PrivateSubnet1   
+        - !Ref PrivateSubnet2   
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -378,7 +378,7 @@ Resources:
     Properties:
       DBInstanceIdentifier: !Sub "${ProjectName}-mysql"
       Engine: mysql
-      # EngineVersion: 8.0.39   # (Opcional)
+     
       MasterUsername: !Ref DBUser
       MasterUserPassword: !Ref DBPassword
       DBName: !Ref DBName
@@ -405,21 +405,21 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-   # SG de la app (instancias detrás del ALB)
+
   AppSg:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: SG for Node/Express app, traffic from ALB and Bastion SSH
-      VpcId: !Ref VPC                  # <-- usamos la VPC ya creada en este mismo template
+      VpcId: !Ref VPC                
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: !Ref AppPort
           ToPort: !Ref AppPort
-          SourceSecurityGroupId: !Ref AlbSg   # <-- SG del ALB definido en la sección del ALB
+          SourceSecurityGroupId: !Ref AlbSg   
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          SourceSecurityGroupId: !Ref BastionSg  # permitir SSH desde la Bastion
+          SourceSecurityGroupId: !Ref BastionSg 
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-app-sg"
@@ -430,11 +430,11 @@ Resources:
         - Key: Owner
           Value: !Ref Owner
 
-  # Permitir que la app se conecte a la BD
+  # permiso de que la app se conecte a la BD
   DbIngressFromApp:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
-      GroupId: !Ref DbSg                # <-- SG de la DB definido en la sección de RDS
+      GroupId: !Ref DbSg                
       IpProtocol: tcp
       FromPort: 3306
       ToPort: 3306
@@ -597,7 +597,7 @@ Resources:
       MaxSize: !Ref MaxSize
       DesiredCapacity: !Ref DesiredCapacity
       TargetGroupARNs:
-        - !Ref TargetGroup       # <-- TargetGroup definido en la sección del ALB
+        - !Ref TargetGroup     
       LaunchTemplate:
         LaunchTemplateId: !Ref LT
         Version: !GetAtt LT.LatestVersionNumber
@@ -624,7 +624,7 @@ Resources:
     Properties:
       GroupDescription: Bastion sin acceso externo (sandbox, sin SSH abierto)
       VpcId: !Ref VPC
-      SecurityGroupIngress: []   # sin puertos abiertos
+      SecurityGroupIngress: []   
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-bastion-sg"
@@ -638,7 +638,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0   # <-- cambia a tu IP si quieres más seguro, ej: 123.45.67.89/32
+          CidrIp: 0.0.0.0/0  
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-ssh-sg"
@@ -649,12 +649,11 @@ Resources:
     Properties:
       ImageId: !Ref LatestAL2023Ami
       InstanceType: !Ref InstanceType
-      KeyName: !Ref KeyName       # <- usar el parámetro KeyName
-
+      KeyName: !Ref KeyName      
       NetworkInterfaces:
         - AssociatePublicIpAddress: true
           DeviceIndex: 0
-          SubnetId: !Ref PublicSubnet1   # usamos la subred pública 1 que ya existe
+          SubnetId: !Ref PublicSubnet1   
           GroupSet:
             - !Ref BastionSg
             - !Ref SshSg 
@@ -695,11 +694,10 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: AutoScalingGroupName
-          Value: !Ref ASG          # <- usamos el ASG del mismo template
+          Value: !Ref ASG         
       TreatMissingData: notBreaching
       AlarmActions:
-        - !Ref AlertsTopic        # <- SNS Topic del template
-
+        - !Ref AlertsTopic       
   Alb5xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -714,7 +712,7 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: LoadBalancer
-          Value: !GetAtt ALB.LoadBalancerFullName   # <- dimensión tipo app/...
+          Value: !GetAtt ALB.LoadBalancerFullName 
       TreatMissingData: notBreaching
       AlarmActions:
         - !Ref AlertsTopic
@@ -749,7 +747,6 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      # sin BucketName -> CFN genera uno único y evitamos colisiones entre sandboxes
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true

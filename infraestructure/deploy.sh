@@ -68,8 +68,8 @@ aws cloudformation deploy \
       ExistingBucketName="" \
   --no-fail-on-empty-changeset
 
-echo "🎉 DEPLOY COMPLETADO"
-echo "✔ Revisa los outputs del stack con:"
+echo " DEPLOY COMPLETADO"
+echo " Revisa los outputs del stack con:"
 echo "aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs'"
 
 
