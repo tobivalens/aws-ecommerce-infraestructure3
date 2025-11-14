@@ -9,29 +9,38 @@ echo "Iniciando despliegue completo del proyecto AWS..."
 STACK_NAME="bookstore-main"
 TEMPLATE_FILE="bookstore-corrected.yaml"
 KEY_PAIR_NAME="bookstore-keypair"
-
 BUCKET="bookstore-artifacts-$(date +%s)"
 
-REPO_URL="https://raw.githubusercontent.com/tobivalens/aws-ecommerce-infraestructure3/main/infraestructe"
+# -----------------------------
+# 2. Verificar que el template exista localmente
+# -----------------------------
+if [ ! -f "$TEMPLATE_FILE" ]; then
+  echo "❌ No se encontró el archivo $TEMPLATE_FILE en $(pwd)"
+  echo "Asegúrate de estar en la carpeta infraestructure con el YAML."
+  exit 1
+fi
+
+echo "📄 Usando plantilla local: $TEMPLATE_FILE"
 
 # -----------------------------
-# 2. Descargar template desde GitHub automáticamente
+# 3. Key Pair (.pem) – solo si hace falta
 # -----------------------------
-echo "📥 Descargando plantilla desde GitHub..."
-curl -L "$REPO_URL/$TEMPLATE_FILE" -o "$TEMPLATE_FILE"
+echo "🔑 Verificando KeyPair..."
 
-echo "✔ Plantilla descargada"
+# Si ya existe el .pem, no lo tocamos
+if [ -f "$HOME/$KEY_PAIR_NAME.pem" ]; then
+  echo "🔐 Ya existe $HOME/$KEY_PAIR_NAME.pem, no se vuelve a crear."
+else
+  echo "🆕 Creando KeyPair en AWS y guardando .pem..."
 
-# -----------------------------
-# 3. Crear Key Pair automáticamente
-# -----------------------------
-echo "🔑 Creando KeyPair..."
-aws ec2 create-key-pair \
-  --key-name "$KEY_PAIR_NAME" \
-  --query "KeyMaterial" --output text > "${KEY_PAIR_NAME}.pem"
+  aws ec2 create-key-pair \
+    --key-name "$KEY_PAIR_NAME" \
+    --query 'KeyMaterial' \
+    --output text > "$HOME/$KEY_PAIR_NAME.pem"
 
-chmod 400 "${KEY_PAIR_NAME}.pem"
-echo "✔ KeyPair creado y guardado como ${KEY_PAIR_NAME}.pem"
+  chmod 400 "$HOME/$KEY_PAIR_NAME.pem"
+  echo "✔ KeyPair creada y guardada en $HOME/$KEY_PAIR_NAME.pem"
+fi
 
 # -----------------------------
 # 4. Crear bucket único
@@ -60,5 +69,5 @@ aws cloudformation deploy \
   --no-fail-on-empty-changeset
 
 echo "🎉 DEPLOY COMPLETADO"
-echo "✔ Revisa los outputs del stack:"
+echo "✔ Revisa los outputs del stack con:"
 echo "aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs'"
