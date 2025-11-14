@@ -1,3 +1,4 @@
+// backend/index.js
 require("dotenv").config();
 
 const express = require("express");
@@ -8,66 +9,59 @@ const { sequelize } = require("./models");
 const productRoutes = require("./routes/products");
 const userRoutes = require("./routes/users");
 const paymentRoutes = require("./routes/payments");
+const { seedProducts } = require("./seed"); // 👈 importamos el seed
 
 const app = express();
 
-// Middlewares
 app.use(cors());
 app.use(express.json());
 
-// ===============================
-//  SERVIR FRONTEND ESTÁTICO
-// ===============================
+// STATIC: servir frontend desde /public (ya con index/login/etc)
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    index: false,
+  })
+);
 
-// Servir todo lo que está en backend/public (donde el UserData copia el frontend)
-app.use(express.static(path.join(__dirname, "public")));
-
-// Ruta raíz: mostrar login.html como primera pantalla
+// Rutas de front
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// (opcional) Ruta /login explícita
 app.get("/login", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// ===============================
-//  RUTAS DE API
-// ===============================
+app.get("/login.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "login.html"));
+});
 
+app.get("/index.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// Rutas API
 app.use("/api/products", productRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/payments", paymentRoutes);
 
-// Endpoint de prueba POST
-app.post("/test", (req, res) => {
-  res.json({ message: "POST recibido correctamente" });
-});
-
-
-//LOAD BALANCER HEALTH ENDPOINT quitar esto
-
-
-// Endpoint de salud para el Load Balancer
+// Healthcheck
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
-// ===============================
-//  INICIO DEL SERVIDOR
-// ===============================
-
 const PORT = process.env.PORT || 3000;
 
+// Arranque del servidor + seed automático
 sequelize
-  .sync()
-  .then(() => {
+  .sync() // SIN force:true
+  .then(async () => {
     console.log("✅ DB sincronizada");
+    await seedProducts(); // 👈 aquí se aplica el seed en cada arranque
     app.listen(PORT, () => {
-      console.log(`🚀 Server en http://localhost:${PORT}`);
+      console.log(`🚀 Server escuchando en http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
-    console.error("Error sincronizando DB:", err);
+    console.error("❌ Error sincronizando DB:", err);
   });
